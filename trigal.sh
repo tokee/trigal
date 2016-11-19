@@ -6,13 +6,19 @@ set -e
 #
 # Very simple gallery generator that produces static web pages.
 #
+# Requirements
+# - bash
+# - GraphicsMagic (fastest) or ImageMagic
+#
+# Toke Eskildsen, te@ekot.dk
+#
 
 pushd $(dirname "$0") > /dev/null
-PWD="`pwd`"
+TRI="`pwd`"
 popd > /dev/null
 
-if [ -s $PWD/trigal.conf ]; then
-    source $PWD/trigal.conf
+if [ -s $TRI/trigal.conf ]; then
+    source $TRI/trigal.conf
 fi
 if [ -s trigal.conf ]; then
     source trigal.conf
@@ -115,7 +121,7 @@ function get_arguments() {
     _=${DEST:="$SOURCE"}
     if [ -z "$SOURCE" -a -z "$DEST" ]; then
         # No source or dest
-        if [ "$PWD" == "`pwd`" ]; then
+        if [ "$TRI" == "`pwd`" ]; then
             # Inside trigal folder. Get out!
             pushd ../ > /dev/null
             SOURCE="`pwd`"
@@ -139,6 +145,20 @@ function get_arguments() {
     # Full paths
     RSOURCE="$(cd "$SOURCE"; pwd)"
     RDEST="$(cd "$DEST"; pwd)"
+
+    if [ -z `which gm` ]; then
+        if [ -z `which convert` ]; then
+            >&2 echo "Could not locate GraphicsMagic or ImageMagick. Unable to proceed."
+            exit 3
+        fi
+        # ImageMagick
+        CONVERT="convert"
+        IDENTIFY="identify"
+    else
+        # GraphicsMagick
+        CONVERT="gm convert"
+        IDENTIFY="gm identify"
+    fi
 }
 
 # Iterates all sub folders. If they contain trigal structures,
@@ -148,6 +168,7 @@ function get_arguments() {
 function get_sub_folders() {
     local FOLDER="$1"
     SUBFOLDERS=""
+
     if [ "." == ".`ls -d $FOLDER/*/ 2> /dev/null`" ]; then
         return
     fi
@@ -179,6 +200,8 @@ function get_images() {
     local S="$1"
     local D="$2"
     IMAGES=""
+
+    echo "Img: $S -> $D"
     pushd "$S" > /dev/null
     local IMGS="`ls *.jpg *.JPG *.jpeg *.JPEG 2> /dev/null`"
     popd > /dev/null
@@ -186,13 +209,14 @@ function get_images() {
         return
     fi
 
-    for IMAGE $IMAGES; do
+    mkdir -p "$D/trigal/cache"
+    for IMAGE in $IMGS; do
         if [ "$FULL_COPY" == "true" ]; then
             echo cp -n "$S/$IMAGE" "$D/$IMAGE"
         fi
-        local BASE"${IMAGE%.*}"
+        local BASE="${IMAGE%.*}"
         if [ ! -s "$D/trigal/cache/${BASE}.thumb.jpg" ]; then
-            echo "Generating $D/trigal/cache/${BASE}.thumb.jpgE"
+            echo "Generating $D/trigal/cache/${BASE}.thumb.jpg"
         fi
         if [ ! -s "$D/trigal/cache/${BASE}.jpg" ]; then
             echo "Generating $D/trigal/cache/${BASE}.jpg"
@@ -200,6 +224,24 @@ function get_images() {
         if [ ! -s "$D/trigal/cache/${BASE}.info" ]; then
             echo "Generate info for $BASE" > "$D/trigal/cache/${BASE}.info"
         fi
+        if [ "$TRIGAL_COPY" == "true" -a ! -s "$D/trigal/trigal.sh" ]; then
+            cp -r $TRI/* "$D/trigal/"
+            (SOURCE="$S" DEST="$D" dump_settings > "$D/trigal/trigal.conf")
+             echo $SOURCE
+             exit
+        fi
+    done
+
+    if [ ! -s "$D/trigal/cache/_trigal_folder.jpg" ]; then
+        cp "`ls $D/trigal/cache/*.thumb.jpg | head -n 1`" "$D/trigal/cache/_trigal_folder.jpg"
+    fi
+    if [ "$REVERSE_SORT" == "true" ]; then
+        local IL="`ls -r \"$D/trigal/cache/*.info\" 2> /dev/null`"
+    else
+        local IL="`ls \"$D/trigal/cache/*.info\" 2> /dev/null`"
+    fi
+    echo "Img: Done"
+    IMAGES=`cat $IL`
 }
        
 # Arguments: source destination
@@ -219,7 +261,8 @@ function generate() {
         done
     fi
     get_sub_folders "$D" # SUBFOLDERS
-    get_images "$S"  # $IMAGES
+    get_images "$S" "$D"  # $IMAGES
+
     
     # Create list of sub-folders with images
     # Create list of images
