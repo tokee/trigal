@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 #
 # Trivial Gallery - https://github.com/tokee/trigal
@@ -66,13 +67,16 @@ The folder with the template used for generating the web pages.
 If defined, don't copy script, setup and all support files to destination folder.
 Copying makes it possible to update the generated gallery by executing 
 trigal/trigal.shin the destination folder.
+
+-h
+Show the usage text.
 EOF
 }
 
 function dump_settings()  {
     cat <<EOF
 export SOURCE="$SOURCE"
-export DEST="$SOURCE"
+export DEST="$DEST"
 export FULL_COPY=$FULL_COPY
 export ZIP=$ZIP
 export THUMB_SIZE=$THUMB_SIZE
@@ -88,7 +92,7 @@ EOF
 
 function get_arguments() {
     # http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
-    while [[ "$#" > 1 ]]; do
+    while [[ "$#" > 0 ]]; do
         case $1 in
             -s) SOURCE="$2"; shift;;
             -d) DEST="$2"; shift;;
@@ -102,10 +106,11 @@ function get_arguments() {
             -n) SANE_NAMES=true;;
             -t) TEMPLATE="$2"; shift;;
             -nc) TRIGAL_COPY=false; shift;;
-            *) echo "Unknown parameter: $1" ; break;;
+            -h) echo ffo;;
+            *) echo "Unknown parameter: $1" ; exit 2;;
         esac; shift
     done
-    
+
     _=${SOURCE:="$DEST"}
     _=${DEST:="$SOURCE"}
     if [ -z "$SOURCE" -a -z "$DEST" ]; then
@@ -130,7 +135,96 @@ function get_arguments() {
     _=${SANE_NAMES:=false}
     _=${TEMPLATE:="simple"}
     _=${TRIGAL_COPY:=true}
+
+    # Full paths
+    RSOURCE="$(cd "$SOURCE"; pwd)"
+    RDEST="$(cd "$DEST"; pwd)"
+}
+
+# Iterates all sub folders. If they contain trigal structures,
+# add them to the generated list of folders.
+# When finished, the variable SUBFOLDERS will contain the subfolders.
+# Arguments: folder
+function get_sub_folders() {
+    local FOLDER="$1"
+    SUBFOLDERS=""
+    if [ "." == ".`ls -d $FOLDER/*/ 2> /dev/null`" ]; then
+        return
+    fi
+    local SUBS=$(find $FOLDER/*/ -not -path '*/\.*' -type d)
+    
+    for SUB in $SUBS; do
+        if [ ! "." == ".`ls -d $SUB/trigal/ 2> /dev/null`" ]; then
+            continue
+        fi
+        local DS="${SUB%/*}"
+        local DS="${DS##*/}"
+        if [ "trigal" == "$DS" ]; then
+            continue
+        fi
+        if [ ! "." == ".$SUBFOLDERS" ]; then
+            SUBFOLDERS="$SUBFOLDERS"$'\n'
+        fi
+        SUBFOLDERS="${SUBFOLDERS}${DS}"
+    done
+}
+
+# For each image in the folder, ensure there are thumbs and presentation
+# versions in the destination folder an add its data to a list.
+# When finished, the variable IMAGES will contain a list of lines with
+# full fullW fullH presentation presentation_W presentation_H thumb
+# If there are no images, no structures will be created.
+# Arguments: source dest
+function get_images() {
+    local S="$1"
+    local D="$2"
+    IMAGES=""
+    pushd "$S" > /dev/null
+    local IMGS="`ls *.jpg *.JPG *.jpeg *.JPEG 2> /dev/null`"
+    popd > /dev/null
+    if [ "." == ".$IMGS" ]; then
+        return
+    fi
+
+    for IMAGE $IMAGES; do
+        if [ "$FULL_COPY" == "true" ]; then
+            echo cp -n "$S/$IMAGE" "$D/$IMAGE"
+        fi
+        local BASE"${IMAGE%.*}"
+        if [ ! -s "$D/trigal/cache/${BASE}.thumb.jpg" ]; then
+            echo "Generating $D/trigal/cache/${BASE}.thumb.jpgE"
+        fi
+        if [ ! -s "$D/trigal/cache/${BASE}.jpg" ]; then
+            echo "Generating $D/trigal/cache/${BASE}.jpg"
+        fi
+        if [ ! -s "$D/trigal/cache/${BASE}.info" ]; then
+            echo "Generate info for $BASE" > "$D/trigal/cache/${BASE}.info"
+        fi
+}
+       
+# Arguments: source destination
+function generate() {
+    local S="$1"
+    local D="$2"
+    echo "Gen: $S -> $D"
+    # Generate all sub folders
+    if [ ! "." == ".`ls -d $S/*/ 2> /dev/null`" ]; then
+        for SUB in $( find $S/*/ -not -path '*/\.*' -type d); do
+            local DS="${SUB%/*}"
+            local DS="${DS##*/}"
+            if [ "trigal" == "$DS" ]; then
+                continue
+            fi
+            generate "$SUB" "$D/$DS"
+        done
+    fi
+    get_sub_folders "$D" # SUBFOLDERS
+    get_images "$S"  # $IMAGES
+    
+    # Create list of sub-folders with images
+    # Create list of images
+    
 }
 
 get_arguments $@
-dump_settings
+generate "$RSOURCE" "$RDEST"
