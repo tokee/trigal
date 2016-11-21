@@ -13,6 +13,10 @@ set -e
 # Toke Eskildsen, te@ekot.dk
 #
 
+# TODO:
+# - Handle folders with spaces
+#
+
 pushd $(dirname "$0") > /dev/null
 TRI="`pwd`"
 popd > /dev/null
@@ -46,18 +50,25 @@ not be touched.
 -z
 If defined, provide a ZIP file with the source images.
 
+-f WxH
+The folder thumbnail, for example 240x180. The image is padded to force exactly
+the given dimensions. Default is 240x180.
+
+-fq quality
+JPEG quality (1-100) for folder thumbs. 50-80 are sane values. Default=70.
+
 -t WxH
-The thumbnail size, for example 240x180. The thumbnail is padded to force the
-exact size. Default is 240x180.
+The thumbnail size, for example 480x360. The height is fixed, while the width 
+is maximum, Default is 480x360.
+
+-qt quality
+JPEG quality (1-100) for thumbs. 50-80 are sane values. Default=70.
 
 -p WxH
 The presentation size, for example 2000x2000. These are maximum sizes.
 Source image ascpects will be preserved. Default is 2000x2000
 
--qt quality
-JPEG quality (1-100) for thumbs. 50-80 are sane values. Default=70.
-
--qp quality
+-pq quality
 JPEG quality (1-100) for presentation images. 60-90 are sane values. Default=80.
 
 -r
@@ -85,6 +96,8 @@ export SOURCE="$SOURCE"
 export DEST="$DEST"
 export FULL_COPY=$FULL_COPY
 export ZIP=$ZIP
+export FOLDER_THUMB_SIZE=$THUMB_SIZE
+export FOLDER_THUMB_QUALITY=$THUMB_QUALITY
 export THUMB_SIZE=$THUMB_SIZE
 export THUMB_QUALITY=$THUMB_QUALITY
 export PRESENTATION_SIZE=$PRESENTATION_SIZE
@@ -104,10 +117,12 @@ function get_arguments() {
             -d) DEST="$2"; shift;;
             -f) FULL_COPY=true;;
             -z) ZIP=true;;
+            -f) FOLDER_THUMB_SIZE=$2; shift;;
+            -fq) FOLDER_THUMB_QUALITY=$2; shift;;
             -t) THUMB_SIZE=$2; shift;;
-            -qt) THUMB_QUALITY=$2; shift;;
+            -tq) THUMB_QUALITY=$2; shift;;
             -p) PRESENTATION_SIZE=$2; shift;;
-            -qp) PRESENTATION_QUALITY=$2; shift;;
+            -pq) PRESENTATION_QUALITY=$2; shift;;
             -r) REVERSE_SORT=true;;
             -n) SANE_NAMES=true;;
             -t) TEMPLATE="$2"; shift;;
@@ -131,9 +146,19 @@ function get_arguments() {
         fi
         DEST="$SOURCE"
     fi
+    if [ ! -d "$SOURCE" ]; then
+        >&2 echo "The source folder \"$SOURCE\" could not be found"
+        exit 4
+    fi
+    if [ ! -d "$DEST" ]; then
+        >&2 echo "The destination folder \"$DEST\" could not be found"
+        exit 5
+    fi
     _=${FULL_COPY:=false}
     _=${ZIP:=false}
-    _=${THUMB_SIZE:=240x180}
+    _=${FOLDER_THUMB_SIZE:=240x180}
+    _=${FOLDER_THUMB_QUALITY:=70}
+    _=${THUMB_SIZE:=480x360}
     _=${THUMB_QUALITY:=70}
     _=${PRESENTATION_SIZE:=2000x2000}
     _=${PRESENTATION_QUALITY:=80}
@@ -196,7 +221,7 @@ function get_sub_folders() {
 # full fullW fullH presentation presentation_W presentation_H thumb
 # If there are no images, no structures will be created.
 # Arguments: source dest
-function get_images() {
+function create_images() {
     local S="$1"
     local D="$2"
     IMAGES=""
@@ -209,6 +234,7 @@ function get_images() {
         return
     fi
 
+    local TH="x`echo $THUMB_SIZE | cut -dx -f 2`" # x360
     mkdir -p "$D/trigal/cache"
     for IMAGE in $IMGS; do
         if [ "$FULL_COPY" == "true" ]; then
@@ -217,6 +243,8 @@ function get_images() {
         local BASE="${IMAGE%.*}"
         if [ ! -s "$D/trigal/cache/${BASE}.thumb.jpg" ]; then
             echo "Generating $D/trigal/cache/${BASE}.thumb.jpg"
+            echo "$CONVERT -size $THUMB_SIZE "$S/$IMAGE" -resize $THUMB_SIZE -gravity center -bordercolor black -border $THUMB_SIZE -crop $TH -quality $THUMB_QUALITY -unsharp 10x4+1+0 \"$D/trigal/cache/${BASE}.thumb.jpg\""
+            $CONVERT -size $THUMB_SIZE "$S/$IMAGE" -resize $THUMB_SIZE -gravity center -bordercolor black -border $THUMB_SIZE -crop $TH -quality $THUMB_QUALITY -unsharp 10x4+1+0 "$D/trigal/cache/${BASE}.thumb.jpg"
         fi
         if [ ! -s "$D/trigal/cache/${BASE}.jpg" ]; then
             echo "Generating $D/trigal/cache/${BASE}.jpg"
@@ -233,6 +261,7 @@ function get_images() {
     done
 
     if [ ! -s "$D/trigal/cache/_trigal_folder.jpg" ]; then
+        # TODO: Proper folder image generation with option to replace
         cp "`ls $D/trigal/cache/*.thumb.jpg | head -n 1`" "$D/trigal/cache/_trigal_folder.jpg"
     fi
     if [ "$REVERSE_SORT" == "true" ]; then
@@ -261,7 +290,7 @@ function generate() {
         done
     fi
     get_sub_folders "$D" # SUBFOLDERS
-    get_images "$S" "$D"  # $IMAGES
+    create_images "$S" "$D"  # $IMAGES
 
     
     # Create list of sub-folders with images
