@@ -244,7 +244,7 @@ function create_images() {
         if [ ! -s "$D/trigal/cache/${BASE}.thumb.jpg" ]; then
             echo "Generating $D/trigal/cache/${BASE}.thumb.jpg"
             echo "$CONVERT -size $THUMB_SIZE "$S/$IMAGE" -resize $THUMB_SIZE -gravity center -bordercolor black -border $THUMB_SIZE -crop $TH -quality $THUMB_QUALITY -unsharp 10x4+1+0 \"$D/trigal/cache/${BASE}.thumb.jpg\""
-            $CONVERT -size $THUMB_SIZE "$S/$IMAGE" -resize $THUMB_SIZE -gravity center -bordercolor black -border $THUMB_SIZE -crop $TH -quality $THUMB_QUALITY -unsharp 10x4+1+0 "$D/trigal/cache/${BASE}.thumb.jpg"
+            $CONVERT -size $THUMB_SIZE "$S/$IMAGE" -resize $THUMB_SIZE -gravity center -bordercolor black -border $THUMB_SIZE -crop $TH -gravity East -background white -splice 5x0 -background black -splice 5x0 -trim -chop 5x0 -gravity West -background white -splice 5x0 -background black -splice 5x0 -trim -chop 5x0 -quality $THUMB_QUALITY -unsharp 10x4+1+0 "$D/trigal/cache/${BASE}.thumb.jpg"
         fi
         if [ ! -s "$D/trigal/cache/${BASE}.jpg" ]; then
             echo "Generating $D/trigal/cache/${BASE}.jpg"
